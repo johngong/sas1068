@@ -16,7 +16,7 @@ struct workqueue_struct *sas1068_wq;
 
 static struct scsi_host_template sas1068_sht = {
 	.module			= THIS_MODULE,
-	.name			= DRV_NAME,
+	.name			= "MPT SAS HOST",
 	.queuecommand		= sas_queuecommand,
 	.target_alloc		= sas_target_alloc,
 	.slave_configure	= sas_slave_configure,
@@ -434,36 +434,37 @@ static struct sas1068_hba_info *sas1068_pci_alloc(struct pci_dev *pdev,
 	return NULL;
 }
 
-static int pci_go_44(struct pci_dev *pdev)
+static int sas1068_detect_dma_mask(struct pci_dev *pdev)
 {
-	int rc;
-
-	if (!pci_set_dma_mask(pdev, DMA_BIT_MASK(44))) {
-		rc = pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(44));
-		if (rc) {
-			rc = pci_set_consistent_dma_mask(pdev,
-				DMA_BIT_MASK(32));
-			if (rc) {
-				dev_printk(KERN_ERR, &pdev->dev,
-					"44-bit DMA enable failed\n");
-				return rc;
-			}
+	if (sizeof(dma_addr_t) > 4) {
+		const uint64_t required_mask = 
+			dma_get_required_mask(&pdev->dev);
+		if (required_mask > DMA_BIT_MASK(32) && 
+			!pci_set_dma_mask(pdev, DMA_BIT_MASK(64)) && 
+			!pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(64))) {
+			ioc->dma_mask = DMA_BIT_MASK(64);
+			dev_printk(KERN_INFO, &pdev->dev,
+			"64 BIT PCI BUS DMA ADDRESSING SUPPORTED\n");
+		} else if (!pci_set_dma_mask(pdev, DMA_BIT_MASK(32)) && 
+			!pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(32))) {
+			ioc->dma_mask = DMA_BIT_MASK(32);
+			dev_printk(KERN_INFO, &pdev->dev,
+			": 32 BIT PCI BUS DMA ADDRESSING SUPPORTED\n"};
+		} else {
+			dev_printk(KERN_ERR, &pdev->dev,
+			"no suitable DMA mask for %s\n", pci_name(pdev)};
 		}
 	} else {
-		rc = pci_set_dma_mask(pdev, DMA_BIT_MASK(32));
-		if (rc) {
+		if (!pci_set_dma_mask(pdev, DMA_BIT_MASK(32))
+			&& !pci_set_consistent_dma_mask(pdev,
+						DMA_BIT_MASK(32))) {
+			ioc->dma_mask = DMA_BIT_MASK(32);
 			dev_printk(KERN_ERR, &pdev->dev,
-				"32-bit DMA enable failed\n");
-			return rc;
-		}
-		rc = pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(32));
-		if (rc) {
+			": 32 BIT PCI BUS DMA ADDRESSING SUPPORTED\n"};
+		} else {
 			dev_printk(KERN_ERR, &pdev->dev,
-				"32-bit consistent DMA enable failed\n");
-			return rc;
+			"no suitable DMA mask for %s\n", pci_name(pdev)};
 		}
-	}
-	return rc;
 }
 
 static int sas1068_prep_sas_ha_init(struct Scsi_Host *shost,
@@ -845,22 +846,12 @@ static int sas1068_pci_probe(struct pci_dev *pdev,
 		goto err_out_enable;
 	pci_set_master(pdev);
 
-	/*
-	 * Enable pci slot busmaster by setting pci command register.
-	 * This is required by FW for Cyclone card.
-	 */
-
-	/*
-	pci_read_config_dword(pdev, PCI_COMMAND, &pci_reg);
-	pci_reg |= 0x157;
-	pci_write_config_dword(pdev, PCI_COMMAND, pci_reg);
 	rc = pci_request_regions(pdev, DRV_NAME);
 	if (rc)
 		goto err_out_disable;
-	rc = pci_go_44(pdev);
+	rc = sas1068_detect_dma_mask(pdev);
 	if (rc)
 		goto err_out_regions;
-	*/
 
 	shost = scsi_host_alloc(&sas1068_sht, sizeof(void *));
 	if (!shost) {

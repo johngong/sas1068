@@ -849,9 +849,6 @@ static int sas1068_pci_probe(struct pci_dev *pdev,
 	rc = pci_request_regions(pdev, DRV_NAME);
 	if (rc)
 		goto err_out_disable;
-	rc = sas1068_detect_dma_mask(pdev);
-	if (rc)
-		goto err_out_regions;
 
 	shost = scsi_host_alloc(&sas1068_sht, sizeof(void *));
 	if (!shost) {
@@ -865,7 +862,9 @@ static int sas1068_pci_probe(struct pci_dev *pdev,
 		rc = -ENOMEM;
 		goto err_out_free_host;
 	}
-
+	rc = sas1068_detect_dma_mask(pdev);
+	if (rc)
+		goto err_out_regions;
 	rc = sas1068_prep_sas_ha_init(shost, chip);
 	if (rc) {
 		rc = -ENOMEM;
